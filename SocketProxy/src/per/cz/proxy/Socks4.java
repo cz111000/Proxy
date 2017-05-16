@@ -1,10 +1,12 @@
 package per.cz.proxy;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.nio.ByteBuffer;
+import java.util.Scanner;
 
 /**
  * Created by 橙子 on 2016/11/12.
@@ -13,8 +15,6 @@ public class Socks4 {
     private InputStream in;
     private OutputStream out;
     private Socket proxySocket;
-    private InputStream proxyIn;
-    private OutputStream proxyOut;
     private String host;
     private int port = 80;
     private Type type = Type.UNKNOWN;
@@ -46,9 +46,6 @@ public class Socks4 {
         out.write((byte) 0x0);
         try {
             proxySocket = new Socket(host, port);
-            proxySocket.setSoTimeout(3000);
-            proxyIn = proxySocket.getInputStream();
-            proxyOut = proxySocket.getOutputStream();
             out.write((byte) 0x5A);
         } catch (Exception e) {
             out.write((byte) 0x5B);
@@ -60,11 +57,7 @@ public class Socks4 {
         return type;
     }
 
-    public InputStream getProxyIn() {
-        return proxyIn;
-    }
-
-    public OutputStream getProxyOut() {
-        return proxyOut;
+    public Socket getProxySocket() {
+        return proxySocket;
     }
 }

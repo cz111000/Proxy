@@ -1,5 +1,4 @@
 # Proxy
 
-支持http/https/socks4/socks5协议
-
-除优酷页面无法打开，其余测试通过
+support http/ssl/ss4/ss5
+wehen using Edge browser has some problems

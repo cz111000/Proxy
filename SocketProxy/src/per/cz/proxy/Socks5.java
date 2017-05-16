@@ -2,6 +2,8 @@ package per.cz.proxy;
 
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.nio.ByteBuffer;
@@ -13,8 +15,7 @@ public class Socks5 {
     private InputStream in;
     private OutputStream out;
     private Socket proxySocket;
-    private InputStream proxyIn;
-    private OutputStream proxyOut;
+    private DatagramSocket clientDatagramSocket = null;
     private String host;
     private int port = 80;
     private Type type = Type.UNKNOWN;
@@ -53,8 +54,8 @@ public class Socks5 {
         }
         //RSV
         in.read();
-        byte[] temp;
         //ATYPE
+        byte[] temp;
         switch (in.read()) {
             case 0x1:
                 temp = new byte[4];
@@ -68,6 +69,9 @@ public class Socks5 {
                 temp = new byte[in.read()];
                 in.read(temp);
                 host = new String(temp);
+                temp = new byte[2];
+                in.read(temp);
+                port = ByteBuffer.wrap(temp).asShortBuffer().get() & 0xFFFF;
                 break;
             case 0x4:
                 temp = new byte[16];
@@ -83,9 +87,10 @@ public class Socks5 {
         out.write((byte) 0x5);
         try {
             proxySocket = new Socket(host, port);
-            proxySocket.setSoTimeout(3000);
-            proxyIn = proxySocket.getInputStream();
-            proxyOut = proxySocket.getOutputStream();
+            if (type == Type.UDP) {
+                clientDatagramSocket = new DatagramSocket(Proxy.PROXY_PORT);
+                clientDatagramSocket.setSoTimeout(1000 * 60 * 5);
+            }
             out.write((byte) 0x0);
         } catch (Exception e) {
             out.write((byte) 0x1);
@@ -93,18 +98,57 @@ public class Socks5 {
         out.write((byte) 0x0);
         out.write((byte) 0x1);
         out.write(proxySocket.getLocalAddress().getAddress());
-        out.write((byte) (1080 & 0xFF00));
-        out.write((byte) (1080 & 0x00FF));
+        out.write((byte) (Proxy.PROXY_PORT & 0xFF00));
+        out.write((byte) (Proxy.PROXY_PORT & 0x00FF));
         out.flush();
         //SOCKS Server响应
+        if (clientDatagramSocket != null) {
+            byte[] buffer = new byte[1024];
+            DatagramPacket clientReceivePacket = new DatagramPacket(buffer, buffer.length);
+            this.clientDatagramSocket.receive(clientReceivePacket);
+            //|  RSV  | FRAG | ATYP | DST.ADDR | DST.PORT | DATA |
+            //| 00 00 |   0  | 1/3/4| -------- |   00 80  | ---- |
+            int offset = 5;
+            switch (buffer[4]) {
+                case 0x1:
+                    temp = new byte[]{buffer[5], buffer[6], buffer[7], buffer[8]};
+                    offset += temp.length;
+                    host = InetAddress.getByAddress(temp).getHostAddress();
+                    break;
+                case 0x3:
+                    temp = new byte[buffer[5]];
+                    offset++;
+                    System.arraycopy(buffer, 6, temp, 0, temp.length);
+                    offset += temp.length;
+                    host = new String(temp);
+                    break;
+                case 0x4:
+                    temp = new byte[16];
+                    System.arraycopy(buffer, 5, temp, 0, temp.length);
+                    offset += temp.length;
+                    host = InetAddress.getByAddress(temp).getHostAddress();
+                    break;
+            }
+            temp = new byte[]{buffer[offset + 1], buffer[offset + 2]};
+            offset += temp.length;
+            port = ByteBuffer.wrap(temp).asShortBuffer().get() & 0xFFFF;
+            DatagramSocket serverDatagramSocket = new DatagramSocket();
+            serverDatagramSocket.setSoTimeout(1000 * 60 * 5);
+            DatagramPacket serverSendPacket = new DatagramPacket(buffer, offset, clientReceivePacket.getLength() - offset, InetAddress.getByName(host), port);
+            serverDatagramSocket.send(serverSendPacket);
+            DatagramPacket serverReceivePacket = new DatagramPacket(buffer, offset, buffer.length - offset);
+            serverDatagramSocket.receive(serverReceivePacket);
+            serverDatagramSocket.close();
+            DatagramPacket clientSendPacket = new DatagramPacket(buffer, offset + serverReceivePacket.getLength(), clientReceivePacket.getAddress(), clientReceivePacket.getPort());
+            this.clientDatagramSocket.send(clientSendPacket);
+            this.clientDatagramSocket.close();
+            proxySocket.close();
+        }
+
         return type;
     }
 
-    public InputStream getProxyIn() {
-        return proxyIn;
-    }
-
-    public OutputStream getProxyOut() {
-        return proxyOut;
+    public Socket getProxySocket() {
+        return proxySocket;
     }
 }

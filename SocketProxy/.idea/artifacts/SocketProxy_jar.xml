@@ -1,0 +1,8 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="SocketProxy:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/SocketProxy_jar</output-path>
+    <root id="archive" name="SocketProxy.jar">
+      <element id="module-output" name="SocketProxy" />
+    </root>
+  </artifact>
+</component>

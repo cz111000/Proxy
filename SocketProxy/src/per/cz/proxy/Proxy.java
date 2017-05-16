@@ -7,14 +7,14 @@ import java.util.concurrent.*;
  * Created by 橙子 on 2016/11/8.
  */
 public class Proxy {
+    public static int PROXY_PORT = 1080;
+
     public static void main(String[] args) {
         try {
-            ServerSocket serverSocket = new ServerSocket(1080);
+            ServerSocket serverSocket = new ServerSocket(Proxy.PROXY_PORT);
             final ExecutorService tpe = Executors.newCachedThreadPool();
-            while(true)
-            {
+            while (true) {
                 Socket socket = serverSocket.accept();
-                socket.setKeepAlive(true);
                 tpe.execute(new ProxyThread(socket));
             }
         } catch (Exception e) {

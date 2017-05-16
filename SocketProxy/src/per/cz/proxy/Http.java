@@ -2,79 +2,90 @@ package per.cz.proxy;
 
 import java.io.*;
 import java.net.Socket;
-import java.nio.ByteBuffer;
 
 /**
  * Created by 橙子 on 2016/11/13.
  */
 public class Http {
-    private BufferedReader in;
-    private BufferedWriter out;
-    private InputStream proxyIn;
-    private OutputStream proxyOut;
-    private boolean connect = false;
+    private Socket proxySocket;
+    private ClientInputStream in;
+    private BufferedOutputStream out;
+    private String host;
+    private int port;
+    private boolean socketExchanged;
+    private boolean sslConnect;
 
-    public Http(InputStream in, OutputStream out) {
-        this.in = new BufferedReader(new InputStreamReader(in));
-        this.out = new BufferedWriter(new OutputStreamWriter(new BufferedOutputStream(out)));
+    public Http(ClientInputStream in, BufferedOutputStream out) {
+        this.in = in;
+        this.out = out;
+        sslConnect = false;
+        socketExchanged = false;
     }
 
-    public Type doJob() {
+    public Type doJob() throws IOException {
         try {
             String line;
-            String host = "";
-            int port = 0;
-            while (!((line = in.readLine()).isEmpty()))
+            while (!((line = in.readLine(true)).isEmpty())) {
                 if (line.startsWith("CONNECT")) {
-                    connect = true;
-                    out.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+                    sslConnect = true;
+                    out.write("HTTP/1.1 200 Connection Established\r\n\r\n".getBytes());
                     out.flush();
                 } else if (line.startsWith("Host:")) {
-                    host = getHost(line);
-                    port = getPort(line);
+                    String host = getHost(line);
+                    int port = getPort(line);
+                    if (this.host == null || !this.host.equals(host) || this.port != port) {
+                        proxySocket = new Socket(host, port);
+                        if (this.host != null) {
+                            // 切换host
+                            socketExchanged = true;
+                        }
+                    }
+                    this.host = host;
+                    this.port = port;
                 }
-            //(请求方式 HOST PORT)分析完毕
-            Socket proxySocket = new Socket(host, port);
-            proxySocket.setKeepAlive(true);
-            proxySocket.setSoTimeout(3000);
-            proxyIn = proxySocket.getInputStream();
-            proxyOut = proxySocket.getOutputStream();
+            }
+            if (socketExchanged) {
+                BufferedInputStream proxyIn = new BufferedInputStream(proxySocket.getInputStream());
+                Pipe pipeS2C = new Pipe(proxyIn, out);
+                pipeS2C.start();
+            }
         } catch (Exception e) {
-            System.out.println(e.getMessage());
+            out.write("HTTP/1.1 400 Bad Request\r\n".getBytes());
+            out.write(e.getLocalizedMessage().getBytes());
+            out.write("\r\n".getBytes());
         }
         return Type.TCP;
     }
 
     private String getHost(String data) {
-        String temp = data.substring("Host:".length());
-        temp = temp.replaceAll(" ", "");
-        int begin = temp.lastIndexOf(":");
+        String host = data.substring("Host:".length());
+        host = host.replaceAll(" ", "");
+        int begin = host.lastIndexOf(":");
         if (begin != -1)
-            temp = temp.substring(0, begin);
-        return temp;
+            host = host.substring(0, begin);
+        return host;
     }
 
     private int getPort(String data) {
         data = data.substring("Host:".length());
         data = data.replaceAll(" ", "");
-        int temp = data.indexOf(":");
-        if (temp != -1)
-            temp = Integer.valueOf(data.substring(temp + 1));
+        int port = data.indexOf(":");
+        if (port != -1)
+            port = Integer.valueOf(data.substring(port + 1));
+        else if (sslConnect)
+            port = 443;
         else
-            temp = 80;
+            port = 80;
+        return port;
+    }
+
+    public Socket getProxySocket() throws IOException {
+        return proxySocket;
+    }
+
+    public boolean isSocketExchanged() {
+        boolean temp = socketExchanged;
+        socketExchanged = false;
         return temp;
     }
-
-    public InputStream getProxyIn() {
-        return proxyIn;
-    }
-
-    public OutputStream getProxyOut() {
-        return proxyOut;
-    }
-
-    public boolean isHttpMode() {
-        return !connect;
-    }
-
 }
