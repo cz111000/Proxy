@@ -86,10 +86,14 @@ public class Socks5 {
         //| VER | REP |  RSV  | ATYP | BND.ADDR | BND.PORT |
         out.write((byte) 0x5);
         try {
-            proxySocket = new Socket(host, port);
-            if (type == Type.UDP) {
-                clientDatagramSocket = new DatagramSocket(Proxy.PROXY_PORT);
-                clientDatagramSocket.setSoTimeout(1000 * 60 * 5);
+            switch (type) {
+                case UDP:
+                    clientDatagramSocket = new DatagramSocket(Proxy.PROXY_PORT);
+                    clientDatagramSocket.setSoTimeout(1000 * 60 * 5);
+                    break;
+                case TCP:
+                    proxySocket = new Socket(host, port);
+                    break;
             }
             out.write((byte) 0x0);
         } catch (Exception e) {
@@ -97,7 +101,7 @@ public class Socks5 {
         }
         out.write((byte) 0x0);
         out.write((byte) 0x1);
-        out.write(proxySocket.getLocalAddress().getAddress());
+        out.write(InetAddress.getLocalHost().getAddress());
         out.write((byte) (Proxy.PROXY_PORT & 0xFF00));
         out.write((byte) (Proxy.PROXY_PORT & 0x00FF));
         out.flush();
@@ -142,7 +146,6 @@ public class Socks5 {
             DatagramPacket clientSendPacket = new DatagramPacket(buffer, offset + serverReceivePacket.getLength(), clientReceivePacket.getAddress(), clientReceivePacket.getPort());
             this.clientDatagramSocket.send(clientSendPacket);
             this.clientDatagramSocket.close();
-            proxySocket.close();
         }
 
         return type;
